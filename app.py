@@ -1,7 +1,10 @@
 """本地 HTTP 入口。运行 python app.py 后打开打印出的地址。"""
 
 import argparse
+import csv
+from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import StringIO
 import json
 from pathlib import Path
 import sys
@@ -46,6 +49,9 @@ def create_server(data_file, port=8000):
                 if method == "GET" and url.path == "/api/records":
                     filters = {key: values[-1] for key, values in parse_qs(url.query).items()}
                     return self.send_json(200, ledger.query(filters))
+                if method == "GET" and url.path == "/api/records.csv":
+                    filters = {key: values[-1] for key, values in parse_qs(url.query).items()}
+                    return self.send_csv(ledger.query(filters)["records"])
                 if method == "POST" and url.path == "/api/records":
                     return self.send_json(201, ledger.add(self.read_json()))
                 if url.path.startswith("/api/records/") and method in ("PUT", "DELETE"):
@@ -86,17 +92,40 @@ def create_server(data_file, port=8000):
         def send_json(self, status, data):
             self.respond(status, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
-        def respond(self, status, body, content_type):
+        def send_csv(self, records):
+            output = StringIO(newline="")
+            writer = csv.writer(output, lineterminator="\r\n")
+            writer.writerow(["日期", "收支类型", "类别", "金额（元）", "备注"])
+            for record in records:
+                kind = "收入" if record["kind"] == "income" else "支出"
+                writer.writerow([
+                    record["date"], kind, _safe_spreadsheet_text(record["category"]),
+                    f"{Decimal(record['amount_cents']) / 100:.2f}",
+                    _safe_spreadsheet_text(record["note"]),
+                ])
+            body = b"\xef\xbb\xbf" + output.getvalue().encode("utf-8")
+            self.respond(200, body, "text/csv; charset=utf-8", "attachment; filename=account-book.csv")
+
+        def respond(self, status, body, content_type, content_disposition=None):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            if content_disposition:
+                self.send_header("Content-Disposition", content_disposition)
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             self.end_headers()
             self.wfile.write(body)
 
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+
+
+def _safe_spreadsheet_text(value):
+    """Prevent user-controlled text from being evaluated as an Excel formula."""
+    if value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + value
+    return value
 
 
 def main():

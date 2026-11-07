@@ -1,9 +1,12 @@
 import json
+import csv
+from io import StringIO
 from pathlib import Path
 import tempfile
 from threading import Thread
 import unittest
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app import create_server
@@ -62,6 +65,44 @@ class HTTPTests(unittest.TestCase):
     def test_foreign_origin_and_host_rejected(self):
         self.assertEqual(self.request("/api/records", "POST", {}, {"Origin": "https://other.example"})[0], 403)
         self.assertEqual(self.request("/api/records", headers={"Host": "other.example"})[0], 403)
+
+    def test_csv_exports_all_filtered_records_safely(self):
+        entries = [
+            dict(date="2026-11-07", kind="expense", amount="12.30", category="餐饮", note='午餐, "朋友"\n第二行'),
+            dict(date="2026-11-06", kind="income", amount="1000", category="工资", note="  =1+1"),
+            dict(date="2026-11-05", kind="expense", amount="6", category="交通", note="地铁"),
+        ]
+        for entry in entries:
+            self.assertEqual(self.request("/api/records", "POST", entry)[0], 201)
+
+        status, body, headers = self.request("/api/records.csv?kind=expense&min=6&max=12.30")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get_content_type(), "text/csv")
+        self.assertIn("charset=utf-8", headers.get("Content-Type"))
+        self.assertIn("attachment; filename=account-book.csv", headers.get("Content-Disposition"))
+        self.assertTrue(body.startswith(b"\xef\xbb\xbf"))
+        rows = list(csv.reader(StringIO(body.decode("utf-8-sig"))))
+        self.assertEqual(rows[0], ["日期", "收支类型", "类别", "金额（元）", "备注"])
+        self.assertEqual(len(rows) - 1, 2)
+        self.assertEqual({row[2] for row in rows[1:]}, {"餐饮", "交通"})
+        self.assertEqual(rows[1][3], "12.30")
+        self.assertEqual(rows[1][4], '午餐, "朋友"\n第二行')
+
+        status, body, _ = self.request("/api/records.csv?kind=income")
+        rows = list(csv.reader(StringIO(body.decode("utf-8-sig"))))
+        self.assertEqual(status, 200)
+        self.assertEqual(len(rows) - 1, 1)
+        self.assertEqual(rows[1][4], "'=1+1")
+
+        status, body, _ = self.request("/api/records.csv")
+        rows = list(csv.reader(StringIO(body.decode("utf-8-sig"))))
+        self.assertEqual(status, 200)
+        self.assertEqual(len(rows) - 1, 3)
+
+        status, body, _ = self.request("/api/records.csv?" + urlencode({"category": "交通", "min": "999"}))
+        self.assertEqual(status, 200)
+        self.assertEqual(list(csv.reader(StringIO(body.decode("utf-8-sig")))), [["日期", "收支类型", "类别", "金额（元）", "备注"]])
+        self.assertEqual(self.request("/api/records.csv?start=invalid")[0], 400)
 
 
 if __name__ == "__main__":
