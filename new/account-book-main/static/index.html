@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#245c47">
+  <meta name="description" content="有数记账：在本机记录日常收支，查看明细与分类统计。">
+  <title>有数记账 · 让生活心中有数</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 3h14v18H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 0v18M9 8h6m-6 4h6"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M12 3v9h9A9 9 0 1 1 12 3Zm4 0a9 9 0 0 1 5 5h-5Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M20 8V5H5a2 2 0 0 0 0 4h16v11H5a2 2 0 0 1-2-2V7m18 6h-6v4h6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m15 4 5 5M4 20l5-1L21 7l-5-5L4 14Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Zm-4 9 3 3 5-6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  </svg>
+  <aside class="sidebar">
+    <a class="brand" href="#top" aria-label="有数记账首页"><span class="brand-mark"><svg class="icon"><use href="#i-book"/></svg></span><span>有数<span class="brand-sub">个人记账本</span></span></a>
+    <div class="nav-label">我的账本</div>
+    <nav aria-label="主导航">
+      <a class="nav-link active" href="#top"><svg class="icon"><use href="#i-grid"/></svg>收支概览</a>
+      <a class="nav-link" href="#records-panel"><svg class="icon"><use href="#i-list"/></svg>账目明细</a>
+      <a class="nav-link" href="#stats-panel"><svg class="icon"><use href="#i-chart"/></svg>分类统计</a>
+    </nav>
+    <div class="sidebar-note"><span class="small-sprout">✳</span><p>认真记录，<br>也是好好生活。</p><span>EVERY LITTLE BIT COUNTS</span></div>
+    <div class="sidebar-bottom"><button id="help-button" class="help-button" type="button">使用说明 <span>↗</span></button><div class="local-status"><span></span> 本地账本 · JSON 存储</div></div>
+  </aside>
+
+  <main id="top">
+    <header class="topbar"><div class="breadcrumb">我的账本 <span>/</span> <strong>收支概览</strong></div><div id="today-label" class="today-label"></div></header>
+    <section class="page-heading"><div><div class="eyebrow">A LITTLE RECORD, A BETTER LIFE</div><h1>生活有数，心里有底<span>。</span></h1><p>从一笔小小的记录，了解自己的每一天。</p></div><button class="button primary add-record" type="button" disabled><svg class="icon"><use href="#i-plus"/></svg>记一笔</button></section>
+
+    <div id="load-error" class="error-banner" role="alert" hidden><span></span><button id="retry-button" type="button">重试</button></div>
+    <section class="summary-grid" aria-label="当前筛选收支汇总">
+      <article class="summary-card income-card"><div class="summary-top"><span>总收入</span><span class="metric-icon income"><svg class="icon"><use href="#i-arrow"/></svg></span></div><div class="metric"><span>¥</span><strong id="income-total">0.00</strong></div><p>每一份努力，都有回响</p></article>
+      <article class="summary-card expense-card"><div class="summary-top"><span>总支出</span><span class="metric-icon expense"><svg class="icon"><use href="#i-arrow"/></svg></span></div><div class="metric"><span>¥</span><strong id="expense-total">0.00</strong></div><p>每一笔花费，都有迹可循</p></article>
+      <article class="summary-card balance-card"><div class="summary-top"><span>收支结余</span><span class="metric-icon balance"><svg class="icon"><use href="#i-wallet"/></svg></span></div><div class="metric"><span>¥</span><strong id="balance-total">0.00</strong></div><p>收入 − 支出 <span class="balance-count" id="summary-count">0 笔记录</span></p></article>
+    </section>
+
+    <section class="filter-panel" aria-labelledby="filter-title">
+      <div class="filter-heading"><h2 id="filter-title">看看这段时间</h2><div class="quick-filters" aria-label="快速选择日期"><button type="button" class="selected" data-period="all" aria-pressed="true">全部</button><button type="button" data-period="month" aria-pressed="false">本月</button><button type="button" data-period="week" aria-pressed="false">本周</button></div><span id="scope-label" class="scope-label">全部记录</span></div>
+      <form id="filter-form">
+        <div class="filter-grid"><label>开始日期<input type="date" name="start" aria-label="开始日期"></label><label>结束日期<input type="date" name="end" aria-label="结束日期"></label><label>收支类型<select name="kind"><option value="">全部类型</option><option value="expense">支出</option><option value="income">收入</option></select></label><label>类别<select name="category"><option value="">全部类别</option></select></label><label>最低金额（元）<input type="number" name="min" min="0" max="9999999999.99" step="0.01" placeholder="不限"></label><label>最高金额（元）<input type="number" name="max" min="0" max="9999999999.99" step="0.01" placeholder="不限"></label></div>
+        <div class="filter-bottom"><label class="search-field"><svg class="icon"><use href="#i-search"/></svg><input name="q" type="search" placeholder="搜索备注或类别…" maxlength="200" aria-label="搜索备注或类别"></label><span class="filter-hint">汇总和图表随筛选同步更新</span><button type="button" class="button text-button" id="reset-filters">重置</button><button type="submit" class="button secondary">应用筛选</button></div>
+        <p id="filter-error" class="form-error" role="alert" hidden></p>
+      </form>
+    </section>
+
+    <div class="content-grid">
+      <section class="panel records-panel" id="records-panel" aria-labelledby="records-title"><div class="panel-heading"><div><h2 id="records-title">账目明细 <span id="record-count" class="count-badge">0</span></h2><p>按记账日期倒序，最近的记录在前</p></div><button class="icon-button" id="refresh-button" title="刷新账目" aria-label="刷新账目" type="button">↻</button></div>
+        <div class="table-wrap"><table><thead><tr><th scope="col">类别</th><th scope="col">备注</th><th scope="col">日期</th><th scope="col" class="amount-column">金额</th><th scope="col" class="actions-column">操作</th></tr></thead><tbody id="records-body"></tbody></table></div>
+        <div id="empty-state" class="empty-state"><span class="empty-icon"><svg class="icon"><use href="#i-book"/></svg></span><h3 id="empty-title">正在读取账本…</h3><p id="empty-description">稍等一下，你的记录马上就来。</p><button class="button secondary add-record" id="empty-add" type="button" hidden>记录第一笔</button></div>
+        <div class="table-footer"><span id="page-info">共 0 笔记录</span><div class="pagination"><button type="button" id="previous-page" class="icon-button previous" aria-label="上一页" disabled><svg class="icon"><use href="#i-chevron"/></svg></button><span id="page-number">1 / 1</span><button type="button" id="next-page" class="icon-button" aria-label="下一页" disabled><svg class="icon"><use href="#i-chevron"/></svg></button></div></div>
+      </section>
+      <section class="panel stats-panel" id="stats-panel" aria-labelledby="stats-title"><div class="panel-heading"><div><h2 id="stats-title">支出花在哪儿</h2><p>当前筛选内的支出构成</p></div><svg class="icon muted"><use href="#i-chart"/></svg></div><div id="donut" class="donut" role="img" aria-label="暂无支出数据"><div class="donut-hole"><span>总支出</span><strong id="chart-total">¥0.00</strong><small id="chart-category-count">0 个类别</small></div></div><div id="chart-legend" class="chart-legend"></div><p id="chart-empty" class="chart-empty">记录一笔支出，看看钱花在了哪里。</p><div class="stats-note"><svg class="icon"><use href="#i-shield"/></svg><span>账本保存于本机<br>日常记录，安心留存</span></div></section>
+    </div>
+    <footer class="page-footer"><span>有数记账 <span class="footer-dot">·</span> 把日子过成喜欢的样子</span><span>金额单位：人民币（元）</span></footer>
+  </main>
+
+  <dialog id="record-dialog" aria-labelledby="record-dialog-title"><form id="record-form"><div class="dialog-heading"><div><span class="eyebrow">MAKE IT COUNT</span><h2 id="record-dialog-title">记一笔</h2></div><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="type-switch" role="group" aria-label="收支类型"><button type="button" data-kind="expense" class="selected" aria-pressed="true">− 支出</button><button type="button" data-kind="income" aria-pressed="false">＋ 收入</button></div><input name="kind" type="hidden" value="expense"><label class="amount-input-label">金额（元）<span class="amount-input"><span>¥</span><input name="amount" type="number" min="0.01" max="9999999999.99" step="0.01" required placeholder="0.00" inputmode="decimal"></span></label><div class="form-two"><label>日期<input type="date" name="date" required></label><label>类别<select name="category" required></select></label></div><label class="note-label">备注 <span>选填，最多 200 字</span><textarea name="note" rows="3" maxlength="200" placeholder="这笔钱用来做什么？"></textarea></label><p id="record-error" class="form-error" role="alert" hidden></p><div class="dialog-footer"><button type="button" class="button secondary close-dialog">取消</button><button type="submit" id="save-record" class="button primary">保存记录</button></div></form></dialog>
+
+  <dialog id="delete-dialog" aria-labelledby="delete-title"><div class="dialog-heading"><h2 id="delete-title">删除这笔记录？</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><p id="delete-description" class="delete-description"></p><p class="muted">删除后无法撤销，收支统计也会同步更新。</p><p id="delete-error" class="form-error" role="alert" hidden></p><div class="dialog-footer"><button type="button" class="button secondary close-dialog">保留记录</button><button type="button" class="button danger" id="confirm-delete">确认删除</button></div></dialog>
+
+  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">开始使用有数</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><ol class="help-list"><li><strong>记下收入和支出</strong><p>点击「记一笔」，填写金额、日期、类别和备注。金额填写正数，由收支类型决定用途。</p></li><li><strong>查看与筛选</strong><p>用日期、类别、金额或备注筛选账目。上方汇总和右侧图表只统计筛选后的记录。</p></li><li><strong>保管好本地账本</strong><p>默认数据保存在项目的 data/ledger.json 文件中。关闭程序后仍然保留；备份时先停止程序，再复制该文件。</p></li></ol><div class="dialog-footer"><button type="button" class="button primary close-dialog">知道了</button></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
