@@ -618,6 +618,35 @@ input[type=date] {
   margin-top:7px
 }
 
+.panel-actions {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  flex-shrink:0
+}
+
+.export-button {
+  min-height:32px;
+  padding:0 12px;
+  font-size:11px;
+  gap:6px
+}
+
+.export-button .icon {
+  width:14px;
+  height:14px
+}
+
+@media(max-width:460px) {
+  .export-button {
+    padding:0 9px;
+    font-size:10px
+  }
+  .export-button .icon {
+    display:none
+  }
+}
+
 .count-badge {
   padding:2px 7px;
   background:#f0f3e9;
