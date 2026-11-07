@@ -2,7 +2,6 @@
 
 import argparse
 import csv
-from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import StringIO
 import json
@@ -12,13 +11,39 @@ from urllib.parse import parse_qs, urlsplit
 import webbrowser
 
 from ledger.service import LedgerService
-from ledger.storage import JsonStore, StorageError
+from ledger.storage import BudgetStore, JsonStore, StorageError
 
 ROOT = Path(__file__).resolve().parent
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
 
 
-def create_server(data_file, port=8000):
-    ledger = LedgerService(JsonStore(data_file))
+def csv_safe(value):
+    # 防止表格软件把以公式符号开头的单元格当作公式执行。
+    if value and value[0] in CSV_FORMULA_PREFIXES:
+        return f"'{value}"
+    return value
+
+
+def build_csv_bytes(records):
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["日期", "收支类型", "类别", "金额（元）", "备注"])
+    for record in records:
+        writer.writerow([
+            record["date"],
+            "收入" if record["kind"] == "income" else "支出",
+            record["category"],
+            f"{record['amount_cents'] / 100:.2f}",
+            csv_safe(record["note"]),
+        ])
+    # UTF-8 BOM 方便表格软件正确识别中文。
+    return b"\xef\xbb\xbf" + buffer.getvalue().encode("utf-8")
+
+
+def create_server(data_file, port=8000, budget_file=None):
+    data_path = Path(data_file)
+    budget_path = Path(budget_file) if budget_file is not None else data_path.with_name("budgets.json")
+    ledger = LedgerService(JsonStore(data_path), BudgetStore(budget_path))
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "Youshu/1.0"
@@ -46,12 +71,18 @@ def create_server(data_file, port=8000):
                     if origin and origin not in {f"http://{host}" for host in hosts}:
                         return self.send_json(403, {"error": "不允许跨站修改账本"})
                 url = urlsplit(self.path)
+                if url.path.startswith("/api/budgets/") and method in ("GET", "PUT"):
+                    month = url.path.removeprefix("/api/budgets/")
+                    if method == "GET":
+                        return self.send_json(200, ledger.get_budget(month))
+                    return self.send_json(200, ledger.set_budget(month, self.read_json()))
+                if method == "GET" and url.path == "/api/records.csv":
+                    filters = {key: values[-1] for key, values in parse_qs(url.query).items()}
+                    records = ledger.query(filters)["records"]
+                    return self.respond_csv(200, build_csv_bytes(records))
                 if method == "GET" and url.path == "/api/records":
                     filters = {key: values[-1] for key, values in parse_qs(url.query).items()}
                     return self.send_json(200, ledger.query(filters))
-                if method == "GET" and url.path == "/api/records.csv":
-                    filters = {key: values[-1] for key, values in parse_qs(url.query).items()}
-                    return self.send_csv(ledger.query(filters)["records"])
                 if method == "POST" and url.path == "/api/records":
                     return self.send_json(201, ledger.add(self.read_json()))
                 if url.path.startswith("/api/records/") and method in ("PUT", "DELETE"):
@@ -92,28 +123,22 @@ def create_server(data_file, port=8000):
         def send_json(self, status, data):
             self.respond(status, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
-        def send_csv(self, records):
-            output = StringIO(newline="")
-            writer = csv.writer(output, lineterminator="\r\n")
-            writer.writerow(["日期", "收支类型", "类别", "金额（元）", "备注"])
-            for record in records:
-                kind = "收入" if record["kind"] == "income" else "支出"
-                writer.writerow([
-                    record["date"], kind, _safe_spreadsheet_text(record["category"]),
-                    f"{Decimal(record['amount_cents']) / 100:.2f}",
-                    _safe_spreadsheet_text(record["note"]),
-                ])
-            body = b"\xef\xbb\xbf" + output.getvalue().encode("utf-8")
-            self.respond(200, body, "text/csv; charset=utf-8", "attachment; filename=account-book.csv")
+        def respond_csv(self, status, body):
+            self.send_response(status)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", "attachment; filename=account-book.csv")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
 
-        def respond(self, status, body, content_type, content_disposition=None):
+        def respond(self, status, body, content_type):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            if content_disposition:
-                self.send_header("Content-Disposition", content_disposition)
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             self.end_headers()
             self.wfile.write(body)
@@ -121,26 +146,21 @@ def create_server(data_file, port=8000):
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 
 
-def _safe_spreadsheet_text(value):
-    """Prevent user-controlled text from being evaluated as an Excel formula."""
-    if value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
-        return "'" + value
-    return value
-
-
 def main():
     parser = argparse.ArgumentParser(description="有数记账 · 本地个人账本")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--data", type=Path, default=ROOT / "data" / "ledger.json")
+    parser.add_argument("--budget-data", type=Path, default=None)
     parser.add_argument("--open", action="store_true", help="启动时打开浏览器")
     args = parser.parse_args()
+    budget_file = args.budget_data or args.data.with_name("budgets.json")
     try:
-        server = create_server(args.data, args.port)
+        server = create_server(args.data, args.port, budget_file)
     except (StorageError, OSError, OverflowError) as exc:
         print(f"启动失败：{exc}", file=sys.stderr)
         return 1
     url = f"http://127.0.0.1:{server.server_port}"
-    print(f"有数记账已启动：{url}\n数据文件：{args.data.resolve()}\n按 Ctrl+C 停止服务。", flush=True)
+    print(f"有数记账已启动：{url}\n账本文件：{args.data.resolve()}\n预算文件：{budget_file.resolve()}\n按 Ctrl+C 停止服务。", flush=True)
     if args.open:
         webbrowser.open(url)
     try:
