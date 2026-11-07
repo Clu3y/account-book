@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+import re
 from uuid import uuid4
 
 
@@ -11,6 +12,7 @@ CATEGORIES = {
     "income": ["工资", "奖金", "兼职", "理财", "红包", "其他收入"],
 }
 MAX_CENTS = 999_999_999_999
+MONTH_PATTERN = re.compile(r"[0-9]{4}-(?:0[1-9]|1[0-2])")
 
 
 def parse_date(value, label="日期"):
@@ -23,6 +25,17 @@ def parse_date(value, label="日期"):
         return result
     except ValueError:
         raise ValueError(f"{label}格式应为 YYYY-MM-DD，且必须是真实日期") from None
+
+
+def parse_month(value, label="月份"):
+    if not isinstance(value, str) or MONTH_PATTERN.fullmatch(value) is None:
+        raise ValueError(f"{label}格式应为 YYYY-MM，且必须是真实月份")
+    year, month = (int(part) for part in value.split("-"))
+    try:
+        date(year, month, 1)
+    except ValueError:
+        raise ValueError(f"{label}格式应为 YYYY-MM，且必须是真实月份") from None
+    return value
 
 
 def parse_amount(value, allow_zero=False):
