@@ -62,6 +62,18 @@ class JsonStore:
         except (OSError, UnicodeError, ValueError, TypeError) as exc:
             raise StorageError(f"账本读取失败，原文件已保留：{exc}") from exc
 
+    def backup_before_restore(self):
+        """保留恢复前的账本；备份失败时不继续恢复。"""
+        try:
+            current = self.path.read_bytes() if self.path.exists() else None
+            if current != self._snapshot:
+                raise StorageError("账本文件已被其他程序修改，请重启本程序后再操作")
+            raw = current if current is not None else b'{"version": 1, "records": []}\n'
+            backup_path = self.path.with_name(self.path.name + ".before-restore.bak")
+            _write_atomic(backup_path, raw, ".backup-")
+        except OSError as exc:
+            raise StorageError("无法保存恢复前备份，账本尚未替换") from exc
+
     def save(self, records):
         try:
             current = self.path.read_bytes() if self.path.exists() else None
