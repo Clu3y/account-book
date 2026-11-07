@@ -25,6 +25,7 @@
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Zm-4 9 3 3 5-6"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
   </svg>
   <aside class="sidebar">
     <a class="brand" href="#top" aria-label="有数记账首页"><span class="brand-mark"><svg class="icon"><use href="#i-book"/></svg></span><span>有数<span class="brand-sub">个人记账本</span></span></a>
@@ -47,6 +48,35 @@
       <article class="summary-card income-card"><div class="summary-top"><span>总收入</span><span class="metric-icon income"><svg class="icon"><use href="#i-arrow"/></svg></span></div><div class="metric"><span>¥</span><strong id="income-total">0.00</strong></div><p>每一份努力，都有回响</p></article>
       <article class="summary-card expense-card"><div class="summary-top"><span>总支出</span><span class="metric-icon expense"><svg class="icon"><use href="#i-arrow"/></svg></span></div><div class="metric"><span>¥</span><strong id="expense-total">0.00</strong></div><p>每一笔花费，都有迹可循</p></article>
       <article class="summary-card balance-card"><div class="summary-top"><span>收支结余</span><span class="metric-icon balance"><svg class="icon"><use href="#i-wallet"/></svg></span></div><div class="metric"><span>¥</span><strong id="balance-total">0.00</strong></div><p>收入 − 支出 <span class="balance-count" id="summary-count">0 笔记录</span></p></article>
+    </section>
+
+    <section class="budget-panel" id="budget-panel" aria-labelledby="budget-title">
+      <div class="budget-heading">
+        <div>
+          <h2 id="budget-title"><svg class="icon"><use href="#i-target"/></svg>月度预算</h2>
+          <p>统计所选月份的全部支出，不受上方筛选影响</p>
+        </div>
+        <div class="budget-controls">
+          <label class="budget-month-label">月份<input type="month" id="budget-month" aria-label="选择预算月份"></label>
+          <button type="button" class="button secondary" id="budget-edit">设置预算</button>
+        </div>
+      </div>
+      <div id="budget-loading" class="budget-loading" hidden>正在读取预算…</div>
+      <div id="budget-error" class="budget-error" role="alert" hidden><span></span><button type="button" id="budget-retry">重试</button></div>
+      <div id="budget-body" class="budget-body">
+        <div class="budget-status-row">
+          <span id="budget-status" class="budget-status" aria-live="polite">正在读取预算…</span>
+          <span id="budget-percent" class="budget-percent"></span>
+        </div>
+        <div class="budget-progress" id="budget-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="预算使用进度">
+          <div class="budget-progress-fill" id="budget-progress-fill"></div>
+        </div>
+        <div class="budget-metrics">
+          <div class="budget-metric"><span>预算</span><strong id="budget-amount">—</strong></div>
+          <div class="budget-metric"><span>已用</span><strong id="budget-spent">¥0.00</strong></div>
+          <div class="budget-metric" id="budget-remaining-metric"><span id="budget-remaining-label">剩余</span><strong id="budget-remaining">—</strong></div>
+        </div>
+      </div>
     </section>
 
     <section class="filter-panel" aria-labelledby="filter-title">
@@ -73,7 +103,17 @@
 
   <dialog id="delete-dialog" aria-labelledby="delete-title"><div class="dialog-heading"><h2 id="delete-title">删除这笔记录？</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><p id="delete-description" class="delete-description"></p><p class="muted">删除后无法撤销，收支统计也会同步更新。</p><p id="delete-error" class="form-error" role="alert" hidden></p><div class="dialog-footer"><button type="button" class="button secondary close-dialog">保留记录</button><button type="button" class="button danger" id="confirm-delete">确认删除</button></div></dialog>
 
-  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">开始使用有数</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><ol class="help-list"><li><strong>记下收入和支出</strong><p>点击「记一笔」，填写金额、日期、类别和备注。金额填写正数，由收支类型决定用途。</p></li><li><strong>查看与筛选</strong><p>用日期、类别、金额或备注筛选账目。上方汇总和右侧图表只统计筛选后的记录。</p></li><li><strong>保管好本地账本</strong><p>默认数据保存在项目的 data/ledger.json 文件中。关闭程序后仍然保留；备份时先停止程序，再复制该文件。</p></li></ol><div class="dialog-footer"><button type="button" class="button primary close-dialog">知道了</button></div></dialog>
+  <dialog id="budget-dialog" aria-labelledby="budget-dialog-title">
+    <form id="budget-form">
+      <div class="dialog-heading"><div><span class="eyebrow">MONTHLY BUDGET</span><h2 id="budget-dialog-title">设置月度预算</h2></div><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div>
+      <p id="budget-dialog-month" class="budget-dialog-month"></p>
+      <label class="amount-input-label">预算金额（元）<span class="amount-input"><span>¥</span><input name="amount" id="budget-amount-input" type="number" min="0.01" max="9999999999.99" step="0.01" required placeholder="0.00" inputmode="decimal"></span></label>
+      <p id="budget-dialog-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-footer"><button type="button" class="button secondary close-dialog">取消</button><button type="submit" id="budget-save" class="button primary">保存预算</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">开始使用有数</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><ol class="help-list"><li><strong>记下收入和支出</strong><p>点击「记一笔」，填写金额、日期、类别和备注。金额填写正数，由收支类型决定用途。</p></li><li><strong>查看与筛选</strong><p>用日期、类别、金额或备注筛选账目。上方汇总和右侧图表只统计筛选后的记录。</p></li><li><strong>设置月度预算</strong><p>在「月度预算」卡片选择月份并设置金额，通过进度条查看已用和剩余额度。预算统计该月全部支出，不受筛选影响；超支时会以红色文字提示。</p></li><li><strong>保管好本地账本</strong><p>默认数据保存在项目的 data/ledger.json 文件中。关闭程序后仍然保留；备份时先停止程序，再复制该文件。</p></li></ol><div class="dialog-footer"><button type="button" class="button primary close-dialog">知道了</button></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

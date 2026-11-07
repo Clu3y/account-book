@@ -9,6 +9,7 @@ const recordForm = $("#record-form");
 const palette = ["#789363", "#bccd9b", "#d9bc8e", "#9bb9ac", "#c9977f", "#c5c69b", "#a4a7bb", "#d9dcca"];
 const symbols = { "餐饮": "食", "交通": "行", "购物": "购", "居住": "居", "娱乐": "乐", "医疗": "医", "学习": "学", "工资": "薪", "奖金": "奖", "兼职": "兼", "理财": "财", "红包": "礼" };
 const state = { data: null, page: 1, pageSize: 8, editId: null, deleteId: null, filters: {}, requestId: 0, saving: false };
+const budgetState = { month: localDate().slice(0, 7), data: null, loading: false, saving: false, requestId: 0 };
 let toastTimer;
 
 function notify(message) {
@@ -67,6 +68,8 @@ async function refresh(filters = state.filters, resetPage = false) {
   $$(".add-record").forEach((button) => { button.disabled = false; });
   fillCategories(filterForm.elements.category, filterForm.elements.kind.value, true);
   render();
+  // 账目变动后同步刷新预算卡片；内部自行处理错误，不阻断主流程。
+  loadBudget(budgetState.month);
 }
 
 function render() {
@@ -99,6 +102,104 @@ function render() {
   $("#donut").style.background = stops.length ? `conic-gradient(${stops.join(",")})` : "#edf1e5";
   $("#donut").setAttribute("aria-label", categories.length ? `支出构成：${categories.map((item) => `${item.category} ${money(item.amount_cents)} 元`).join("，")}` : "暂无支出数据");
   renderTable();
+}
+
+function renderBudgetLoading() {
+  $("#budget-loading").hidden = false;
+  $("#budget-error").hidden = true;
+  $("#budget-body").hidden = true;
+}
+
+function renderBudgetError(message) {
+  $("#budget-loading").hidden = true;
+  $("#budget-error").hidden = false;
+  $("#budget-error span").textContent = message;
+  $("#budget-body").hidden = true;
+}
+
+async function loadBudget(month) {
+  const requestId = ++budgetState.requestId;
+  budgetState.month = month;
+  budgetState.loading = true;
+  renderBudgetLoading();
+  try {
+    const data = await api(`/api/budgets/${month}`);
+    if (requestId !== budgetState.requestId) return;
+    budgetState.data = data;
+    renderBudget();
+  } catch (error) {
+    if (requestId !== budgetState.requestId) return;
+    renderBudgetError(error.message);
+  } finally {
+    if (requestId === budgetState.requestId) budgetState.loading = false;
+  }
+}
+
+function renderBudget() {
+  const data = budgetState.data;
+  const panel = $("#budget-panel");
+  $("#budget-loading").hidden = true;
+  $("#budget-error").hidden = true;
+  $("#budget-body").hidden = false;
+  $("#budget-spent").textContent = `¥${money(data.spent_cents)}`;
+  const fill = $("#budget-progress-fill");
+  const progress = $("#budget-progress");
+  panel.classList.remove("is-warning", "is-danger");
+  if (!data.has_budget) {
+    $("#budget-amount").textContent = "—";
+    $("#budget-remaining-label").textContent = "剩余";
+    $("#budget-remaining").textContent = "—";
+    $("#budget-remaining-metric").classList.remove("overspent");
+    $("#budget-status").textContent = "尚未设置预算，点击「设置预算」开始管理本月支出";
+    $("#budget-percent").textContent = "";
+    fill.style.width = "0%";
+    fill.className = "budget-progress-fill";
+    progress.setAttribute("aria-valuenow", "0");
+    return;
+  }
+  const percent = data.usage_percent;
+  $("#budget-amount").textContent = `¥${money(data.budget_cents)}`;
+  $("#budget-percent").textContent = `${percent}%`;
+  fill.style.width = `${Math.min(percent, 100)}%`;
+  $("#budget-remaining-metric").classList.remove("overspent");
+  if (percent > 100) {
+    panel.classList.add("is-danger");
+    fill.className = "budget-progress-fill danger";
+    $("#budget-remaining-label").textContent = "超支";
+    $("#budget-remaining").textContent = `¥${money(data.overspent_cents)}`;
+    $("#budget-remaining-metric").classList.add("overspent");
+    $("#budget-status").textContent = `已超支 ¥${money(data.overspent_cents)}，请留意本月支出`;
+  } else if (percent === 100) {
+    panel.classList.add("is-warning");
+    fill.className = "budget-progress-fill warning";
+    $("#budget-remaining-label").textContent = "剩余";
+    $("#budget-remaining").textContent = "¥0.00";
+    $("#budget-status").textContent = "预算已用尽，再花一笔就会超支";
+  } else if (percent >= 80) {
+    panel.classList.add("is-warning");
+    fill.className = "budget-progress-fill warning";
+    $("#budget-remaining-label").textContent = "剩余";
+    $("#budget-remaining").textContent = `¥${money(data.remaining_cents)}`;
+    $("#budget-status").textContent = "预算使用已超过 80%，注意控制节奏";
+  } else {
+    fill.className = "budget-progress-fill";
+    $("#budget-remaining-label").textContent = "剩余";
+    $("#budget-remaining").textContent = `¥${money(data.remaining_cents)}`;
+    $("#budget-status").textContent = percent === 0 ? "本月还没有支出，预算已备好" : "支出节奏平稳，继续保持";
+  }
+  progress.setAttribute("aria-valuenow", String(Math.min(percent, 100)));
+}
+
+function openBudgetDialog() {
+  if (!budgetState.data) return;
+  $("#budget-form").reset();
+  setError("#budget-dialog-error");
+  $("#budget-dialog-month").textContent = `${budgetState.month} 月预算`;
+  if (budgetState.data.has_budget) {
+    $("#budget-amount-input").value = (budgetState.data.budget_cents / 100).toFixed(2);
+  }
+  $("#budget-dialog").showModal();
+  $("#budget-amount-input").focus();
 }
 
 function textElement(tag, className, text) {
@@ -215,14 +316,44 @@ async function submitFilters() {
 
 $("#today-label").textContent = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
 $$(".add-record").forEach((button) => button.addEventListener("click", () => openRecord()));
-$$(".close-dialog").forEach((button) => button.addEventListener("click", () => { if (!state.saving) button.closest("dialog").close(); }));
-$$("dialog").forEach((dialog) => dialog.addEventListener("cancel", (event) => { if (state.saving) event.preventDefault(); }));
+$$(".close-dialog").forEach((button) => button.addEventListener("click", () => { if (!state.saving && !budgetState.saving) button.closest("dialog").close(); }));
+$$("dialog").forEach((dialog) => dialog.addEventListener("cancel", (event) => { if (state.saving || budgetState.saving) event.preventDefault(); }));
 $$("[data-kind]").forEach((button) => button.addEventListener("click", () => setKind(button.dataset.kind)));
 $("#help-button").addEventListener("click", () => $("#help-dialog").showModal());
 $("#previous-page").addEventListener("click", () => { state.page--; renderTable(); });
 $("#next-page").addEventListener("click", () => { state.page++; renderTable(); });
 $("#refresh-button").addEventListener("click", () => refresh().catch(showLoadError));
 $("#retry-button").addEventListener("click", () => refresh().catch(showLoadError));
+
+$("#budget-month").value = budgetState.month;
+$("#budget-month").addEventListener("change", () => {
+  if ($("#budget-month").value) loadBudget($("#budget-month").value);
+});
+$("#budget-edit").addEventListener("click", openBudgetDialog);
+$("#budget-retry").addEventListener("click", () => loadBudget(budgetState.month));
+$("#budget-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (budgetState.saving) return;
+  budgetState.saving = true;
+  const button = $("#budget-save");
+  button.disabled = true;
+  button.textContent = "保存中…";
+  setError("#budget-dialog-error");
+  try {
+    const amount = $("#budget-amount-input").value;
+    const data = await api(`/api/budgets/${budgetState.month}`, "PUT", { amount });
+    budgetState.data = data;
+    renderBudget();
+    $("#budget-dialog").close();
+    notify("预算已保存");
+  } catch (error) {
+    setError("#budget-dialog-error", error.message);
+  } finally {
+    budgetState.saving = false;
+    button.disabled = false;
+    button.textContent = "保存预算";
+  }
+});
 filterForm.addEventListener("submit", (event) => { event.preventDefault(); submitFilters(); });
 filterForm.elements.kind.addEventListener("change", () => { filterForm.elements.category.value = ""; fillCategories(filterForm.elements.category, filterForm.elements.kind.value, true); });
 for (const name of ["start", "end"]) filterForm.elements[name].addEventListener("change", () => $$("[data-period]").forEach((button) => { button.classList.remove("selected"); button.setAttribute("aria-pressed", "false"); }));
