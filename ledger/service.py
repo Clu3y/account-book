@@ -46,6 +46,42 @@ class LedgerService:
                 return record
         raise KeyError("这笔记录已不存在，请刷新页面")
 
+    def export_backup(self):
+        with self.lock:
+            return {"version": 1, "records": [record.to_dict() for record in self.records]}
+
+    @staticmethod
+    def _validate_backup(payload):
+        if (not isinstance(payload, dict) or type(payload.get("version")) is not int
+                or payload["version"] != 1 or not isinstance(payload.get("records"), list)):
+            raise ValueError("备份格式错误，需要 version 为 1 且包含 records 数组")
+        records = []
+        required = set(Record.__dataclass_fields__)
+        for index, item in enumerate(payload["records"], 1):
+            if not isinstance(item, dict) or not required.issubset(item):
+                raise ValueError(f"第 {index} 笔记录缺少必要字段")
+            try:
+                records.append(Record.from_dict(item))
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"第 {index} 笔记录无效：{exc}") from exc
+        if len({record.id for record in records}) != len(records):
+            raise ValueError("备份中存在重复记录编号")
+        return records
+
+    def preview_restore(self, payload):
+        records = self._validate_backup(payload)
+        dates = [record.date for record in records]
+        return {"valid": True, "count": len(records),
+                "start": min(dates) if dates else None, "end": max(dates) if dates else None}
+
+    def restore_backup(self, payload):
+        records = self._validate_backup(payload)
+        with self.lock:
+            self.store.backup_before_restore()
+            self.store.save(records)
+            self.records = records
+        return {"ok": True, "count": len(records)}
+
     def set_budget(self, month, payload):
         month = parse_month(month)
         if not isinstance(payload, dict):

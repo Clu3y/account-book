@@ -71,6 +71,13 @@ def create_server(data_file, port=8000, budget_file=None):
                     if origin and origin not in {f"http://{host}" for host in hosts}:
                         return self.send_json(403, {"error": "不允许跨站修改账本"})
                 url = urlsplit(self.path)
+                if method == "GET" and url.path == "/api/backup":
+                    return self.send_json(200, ledger.export_backup())
+                if method == "POST" and url.path in ("/api/restore/preview", "/api/restore"):
+                    payload = self.read_json(max_bytes=5 * 1024 * 1024)
+                    if url.path.endswith("/preview"):
+                        return self.send_json(200, ledger.preview_restore(payload))
+                    return self.send_json(200, ledger.restore_backup(payload))
                 if url.path.startswith("/api/budgets/") and method in ("GET", "PUT"):
                     month = url.path.removeprefix("/api/budgets/")
                     if method == "GET":
@@ -109,11 +116,11 @@ def create_server(data_file, port=8000, budget_file=None):
             except OSError:
                 self.send_json(500, {"error": "文件操作失败，请查看终端并检查文件是否完整"})
 
-        def read_json(self):
+        def read_json(self, max_bytes=16_384):
             if self.headers.get_content_type() != "application/json":
                 raise ValueError("请求内容必须为 JSON")
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 16_384:
+            if not 0 < length <= max_bytes:
                 raise ValueError("请求内容为空或过大")
             try:
                 return json.loads(self.rfile.read(length).decode("utf-8"))

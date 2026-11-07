@@ -8,7 +8,7 @@ const filterForm = $("#filter-form");
 const recordForm = $("#record-form");
 const palette = ["#789363", "#bccd9b", "#d9bc8e", "#9bb9ac", "#c9977f", "#c5c69b", "#a4a7bb", "#d9dcca"];
 const symbols = { "餐饮": "食", "交通": "行", "购物": "购", "居住": "居", "娱乐": "乐", "医疗": "医", "学习": "学", "工资": "薪", "奖金": "奖", "兼职": "兼", "理财": "财", "红包": "礼" };
-const state = { data: null, page: 1, pageSize: 8, editId: null, deleteId: null, filters: {}, requestId: 0, saving: false };
+const state = { data: null, page: 1, pageSize: 8, editId: null, deleteId: null, filters: {}, requestId: 0, saving: false, exporting: false };
 const budgetState = { month: localDate().slice(0, 7), data: null, loading: false, saving: false, requestId: 0 };
 let toastTimer;
 
@@ -264,6 +264,7 @@ function renderTable() {
   $("#page-number").textContent = `${state.page} / ${pages}`;
   $("#previous-page").disabled = state.page <= 1;
   $("#next-page").disabled = state.page >= pages;
+  $("#export-csv").disabled = state.exporting;
 }
 
 function setKind(kind) {
@@ -309,6 +310,63 @@ function showLoadError(error) {
   }
 }
 
+function exportFilename(response) {
+  // 优先使用服务端给出的文件名，取不到时回退到接口约定的默认名。
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const encoded = /filename\*=utf-8''([^;]+)/i.exec(disposition);
+  if (encoded) {
+    try { return decodeURIComponent(encoded[1].trim()); } catch { /* 回退到普通文件名 */ }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(disposition);
+  return plain ? plain[1].trim() : "account-book.csv";
+}
+
+function saveDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportCsv() {
+  if (state.exporting || !state.data) return;
+  const button = $("#export-csv");
+  const label = button.querySelector(".export-label");
+  state.exporting = true;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  label.textContent = "导出中…";
+  try {
+    // 使用已应用的筛选条件，保证导出结果与当前列表口径一致；导出全部匹配记录，不受分页影响。
+    const query = new URLSearchParams(state.filters).toString();
+    let response;
+    try { response = await fetch(`/api/records.csv${query ? `?${query}` : ""}`); }
+    catch { throw new Error("无法连接本地服务，导出失败，请确认 Python 程序仍在运行。"); }
+    if (!response.ok) {
+      let detail = "";
+      try { detail = (await response.json()).error || ""; } catch { /* 非 JSON 错误响应 */ }
+      throw new Error(detail ? `导出失败：${detail}` : "导出失败，请稍后重试。");
+    }
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("导出的文件为空，请稍后重试。");
+    saveDownload(blob, exportFilename(response));
+    const count = state.data.summary.count;
+    notify(count ? `已导出 ${count} 笔记录` : "当前筛选没有记录，已导出空表头");
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    state.exporting = false;
+    button.disabled = !state.data;
+    button.removeAttribute("aria-busy");
+    label.textContent = "导出 CSV";
+  }
+}
+
 async function submitFilters() {
   try { await refresh(formFilters(), true); }
   catch (error) { setError("#filter-error", error.message); }
@@ -323,6 +381,7 @@ $("#help-button").addEventListener("click", () => $("#help-dialog").showModal())
 $("#previous-page").addEventListener("click", () => { state.page--; renderTable(); });
 $("#next-page").addEventListener("click", () => { state.page++; renderTable(); });
 $("#refresh-button").addEventListener("click", () => refresh().catch(showLoadError));
+$("#export-csv").addEventListener("click", exportCsv);
 $("#retry-button").addEventListener("click", () => refresh().catch(showLoadError));
 
 $("#budget-month").value = budgetState.month;

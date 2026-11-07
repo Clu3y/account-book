@@ -26,6 +26,7 @@
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Zm-4 9 3 3 5-6"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
     <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 18v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1"/></symbol>
   </svg>
   <aside class="sidebar">
     <a class="brand" href="#top" aria-label="有数记账首页"><span class="brand-mark"><svg class="icon"><use href="#i-book"/></svg></span><span>有数<span class="brand-sub">个人记账本</span></span></a>
@@ -89,7 +90,7 @@
     </section>
 
     <div class="content-grid">
-      <section class="panel records-panel" id="records-panel" aria-labelledby="records-title"><div class="panel-heading"><div><h2 id="records-title">账目明细 <span id="record-count" class="count-badge">0</span></h2><p>按记账日期倒序，最近的记录在前</p></div><button class="icon-button" id="refresh-button" title="刷新账目" aria-label="刷新账目" type="button">↻</button></div>
+      <section class="panel records-panel" id="records-panel" aria-labelledby="records-title"><div class="panel-heading"><div><h2 id="records-title">账目明细 <span id="record-count" class="count-badge">0</span></h2><p>按记账日期倒序，最近的记录在前</p></div><div class="panel-actions"><button class="button secondary export-button" id="export-csv" type="button" title="把当前筛选的全部记录导出为 CSV，可用 Excel 打开" aria-label="导出当前筛选结果为 CSV" disabled><svg class="icon"><use href="#i-download"/></svg><span class="export-label">导出 CSV</span></button><button class="icon-button" id="refresh-button" title="刷新账目" aria-label="刷新账目" type="button">↻</button></div></div>
         <div class="table-wrap"><table><thead><tr><th scope="col">类别</th><th scope="col">备注</th><th scope="col">日期</th><th scope="col" class="amount-column">金额</th><th scope="col" class="actions-column">操作</th></tr></thead><tbody id="records-body"></tbody></table></div>
         <div id="empty-state" class="empty-state"><span class="empty-icon"><svg class="icon"><use href="#i-book"/></svg></span><h3 id="empty-title">正在读取账本…</h3><p id="empty-description">稍等一下，你的记录马上就来。</p><button class="button secondary add-record" id="empty-add" type="button" hidden>记录第一笔</button></div>
         <div class="table-footer"><span id="page-info">共 0 笔记录</span><div class="pagination"><button type="button" id="previous-page" class="icon-button previous" aria-label="上一页" disabled><svg class="icon"><use href="#i-chevron"/></svg></button><span id="page-number">1 / 1</span><button type="button" id="next-page" class="icon-button" aria-label="下一页" disabled><svg class="icon"><use href="#i-chevron"/></svg></button></div></div>
@@ -120,7 +121,7 @@
     </form>
   </dialog>
 
-  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">开始使用有数</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><ol class="help-list"><li><strong>记下收入和支出</strong><p>点击「记一笔」，填写金额、日期、类别和备注。金额填写正数，由收支类型决定用途。</p></li><li><strong>查看与筛选</strong><p>用日期、类别、金额或备注筛选账目。上方汇总和右侧图表只统计筛选后的记录。</p></li><li><strong>设置月度预算</strong><p>在「月度预算」卡片选择月份并设置金额，通过进度条查看已用和剩余额度。预算统计该月全部支出，不受筛选影响；超支时会以红色文字提示。</p></li><li><strong>保管好本地账本</strong><p>默认数据保存在项目的 data/ledger.json 文件中。关闭程序后仍然保留；可在页面下方下载 JSON 备份；恢复前请核对记录数和日期范围，恢复将替换全部账目。请妥善保管备份。</p></li></ol><div class="dialog-footer"><button type="button" class="button primary close-dialog">知道了</button></div></dialog>
+  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">开始使用有数</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><ol class="help-list"><li><strong>记下收入和支出</strong><p>点击「记一笔」，填写金额、日期、类别和备注。金额填写正数，由收支类型决定用途。</p></li><li><strong>查看与筛选</strong><p>用日期、类别、金额或备注筛选账目。上方汇总和右侧图表只统计筛选后的记录。</p></li><li><strong>设置月度预算</strong><p>在「月度预算」卡片选择月份并设置金额，通过进度条查看已用和剩余额度。预算统计该月全部支出，不受筛选影响；超支时会以红色文字提示。</p></li><li><strong>导出筛选结果</strong><p>点击「导出 CSV」，当前筛选匹配的全部记录（包含未显示的分页）会保存为 Excel 可打开的表格文件。导出只是下载文件，不会改变当前筛选和账目列表。</p></li><li><strong>保管好本地账本</strong><p>默认数据保存在项目的 data/ledger.json 文件中。关闭程序后仍然保留；可在页面下方下载 JSON 备份；恢复前请核对记录数和日期范围，恢复将替换全部账目。请妥善保管备份。</p></li></ol><div class="dialog-footer"><button type="button" class="button primary close-dialog">知道了</button></div></dialog>
   <dialog id="restore-dialog" aria-labelledby="restore-title" aria-describedby="restore-warning">
     <div class="dialog-heading"><h2 id="restore-title">确认恢复账本</h2></div>
     <p id="restore-preview"></p>

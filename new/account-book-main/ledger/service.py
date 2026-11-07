@@ -1,0 +1,133 @@
+"""记账、查询和统计。HTTP 界面之外也可以独立调用。"""
+
+from collections import defaultdict
+from datetime import date
+import re
+from threading import RLock
+
+from .models import CATEGORIES, Record, parse_amount, parse_date
+
+MAX_MONTH_RANGE = 120
+
+
+class LedgerService:
+    def __init__(self, store):
+        self.store = store
+        self.records = store.load()
+        self.lock = RLock()
+
+    def add(self, payload):
+        record = Record.create(payload)
+        with self.lock:
+            updated = self.records + [record]
+            self.store.save(updated)
+            self.records = updated
+        return record.to_dict()
+
+    def edit(self, record_id, payload):
+        with self.lock:
+            old = self._find(record_id)
+            record = Record.create(payload, existing=old)
+            updated = [record if r.id == record_id else r for r in self.records]
+            self.store.save(updated)
+            self.records = updated
+            return record.to_dict()
+
+    def delete(self, record_id):
+        with self.lock:
+            self._find(record_id)
+            updated = [r for r in self.records if r.id != record_id]
+            self.store.save(updated)
+            self.records = updated
+
+    def _find(self, record_id):
+        for record in self.records:
+            if record.id == record_id:
+                return record
+        raise KeyError("这笔记录已不存在，请刷新页面")
+
+    def query(self, filters):
+        start, end = filters.get("start", ""), filters.get("end", "")
+        if start:
+            parse_date(start, "开始日期")
+        if end:
+            parse_date(end, "结束日期")
+        if start and end and start > end:
+            raise ValueError("开始日期不能晚于结束日期")
+        low = parse_amount(filters["min"], allow_zero=True) if filters.get("min") else None
+        high = parse_amount(filters["max"], allow_zero=True) if filters.get("max") else None
+        if low is not None and high is not None and low > high:
+            raise ValueError("最低金额不能大于最高金额")
+        kind, category = filters.get("kind", ""), filters.get("category", "")
+        if kind and kind not in CATEGORIES:
+            raise ValueError("收支类型无效")
+        if category and category not in sum(CATEGORIES.values(), []):
+            raise ValueError("类别无效")
+        search = filters.get("q", "").strip().casefold()
+        with self.lock:
+            selected = [r for r in self.records if
+                        (not start or r.date >= start) and (not end or r.date <= end)
+                        and (low is None or r.amount_cents >= low)
+                        and (high is None or r.amount_cents <= high)
+                        and (not kind or r.kind == kind) and (not category or r.category == category)
+                        and (not search or search in (r.note + " " + r.category).casefold())]
+            total_count = len(self.records)
+        selected.sort(key=lambda r: (r.date, r.created_at, r.id), reverse=True)
+        income = sum(r.amount_cents for r in selected if r.kind == "income")
+        expense = sum(r.amount_cents for r in selected if r.kind == "expense")
+        by_category = defaultdict(int)
+        for record in selected:
+            if record.kind == "expense":
+                by_category[record.category] += record.amount_cents
+        return {
+            "records": [r.to_dict() for r in selected],
+            "summary": {"income_cents": income, "expense_cents": expense,
+                        "balance_cents": income - expense, "count": len(selected)},
+            "expense_categories": [{"category": name, "amount_cents": amount}
+                                   for name, amount in sorted(by_category.items(), key=lambda item: (-item[1], item[0]))],
+            "categories": CATEGORIES, "total_count": total_count,
+        }
+
+    def monthly_statistics(self, start_month, end_month):
+        """Return income and expense totals for every month in an inclusive range."""
+        start = _parse_month(start_month, "开始月份")
+        end = _parse_month(end_month, "结束月份")
+        if start > end:
+            raise ValueError("开始月份不能晚于结束月份")
+        month_count = (end.year - start.year) * 12 + end.month - start.month + 1
+        if month_count > MAX_MONTH_RANGE:
+            raise ValueError(f"查询范围不能超过 {MAX_MONTH_RANGE} 个月")
+
+        with self.lock:
+            totals = defaultdict(lambda: {"income_cents": 0, "expense_cents": 0})
+            for record in self.records:
+                month = record.date[:7]
+                if start_month <= month <= end_month:
+                    totals[month][f"{record.kind}_cents"] += record.amount_cents
+
+        months = []
+        current = start
+        while current <= end:
+            month = current.strftime("%Y-%m")
+            income = totals[month]["income_cents"]
+            expense = totals[month]["expense_cents"]
+            months.append({
+                "month": month,
+                "income_cents": income,
+                "expense_cents": expense,
+                "balance_cents": income - expense,
+            })
+            if current == end:
+                break
+            current = date(current.year + (current.month == 12), current.month % 12 + 1, 1)
+        return {"months": months}
+
+
+def _parse_month(value, label):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", value):
+        raise ValueError(f"{label}格式应为 YYYY-MM")
+    # date also rejects year 0000 while keeping the accepted wire format strict.
+    try:
+        return date(int(value[:4]), int(value[5:]), 1)
+    except ValueError:
+        raise ValueError(f"{label}格式应为 YYYY-MM") from None
