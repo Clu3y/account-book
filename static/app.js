@@ -416,3 +416,124 @@ $("#confirm-delete").addEventListener("click", async () => {
 
 $$(".nav-link").forEach((link) => link.addEventListener("click", () => { $$(".nav-link").forEach((item) => item.classList.toggle("active", item === link)); }));
 refresh().catch(showLoadError);
+
+// #6 接口约定见 docs/BACKUP_API.md；服务端负责最终校验和原子替换。
+const restoreState = { payload: null, busy: false, downloading: false };
+function restoreBusy(busy) {
+  restoreState.busy = busy;
+  $("#backup-select").disabled = busy;
+  $("#restore-cancel").disabled = busy;
+  $("#restore-consent").disabled = busy;
+  $("#restore-confirm").disabled = busy || !restoreState.payload || !$("#restore-consent").checked;
+}
+function clearRestore() {
+  restoreState.payload = null;
+  $("#backup-file").value = "";
+  $("#restore-consent").checked = false;
+  $("#restore-confirm").disabled = true;
+}
+$("#backup-download").addEventListener("click", async () => {
+  if (restoreState.downloading) return;
+  restoreState.downloading = true;
+  $("#backup-download").disabled = true;
+  setError("#backup-error");
+  $("#backup-status").textContent = "正在准备完整账目备份…";
+  try {
+    const data = await api("/api/backup");
+    if (data.version !== 1 || !Array.isArray(data.records)) throw new Error("备份格式异常，请联系数据接口负责人。");
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `account-book-${localDate()}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    $("#backup-status").textContent = "已发起备份下载，请检查下载文件并妥善保管。";
+  } catch (error) {
+    $("#backup-status").textContent = "";
+    setError("#backup-error", `下载失败：${error.message}`);
+  } finally {
+    restoreState.downloading = false;
+    $("#backup-download").disabled = false;
+  }
+});
+$("#backup-select").addEventListener("click", () => {
+  if (restoreState.busy) return;
+  clearRestore();
+  setError("#backup-error");
+  $("#backup-status").textContent = "";
+  $("#backup-file").click();
+});
+$("#backup-file").addEventListener("change", async () => {
+  const file = $("#backup-file").files[0];
+  if (!file) return;
+  restoreBusy(true);
+  $("#backup-status").textContent = "正在校验备份，尚未修改账本…";
+  try {
+    if (!/\.json$/i.test(file.name)) throw new Error("请选择 JSON 文件。");
+    if (!file.size || file.size > 5 * 1024 * 1024) throw new Error("备份不能为空且不能超过 5 MiB。");
+    let payload;
+    try { payload = JSON.parse((await file.text()).replace(/^\uFEFF/, "")); }
+    catch { throw new Error("文件不是有效的 JSON。"); }
+    const preview = await api("/api/restore/preview", "POST", payload);
+    if (preview.valid !== true || !Number.isSafeInteger(preview.count) || preview.count < 0 ||
+        (preview.count > 0 && (!/^\d{4}-\d{2}-\d{2}$/.test(preview.start) || !/^\d{4}-\d{2}-\d{2}$/.test(preview.end)))) {
+      throw new Error("服务端校验结果异常，不能恢复。");
+    }
+    restoreState.payload = payload;
+    $("#restore-preview").textContent = `校验通过：${file.name}\n待恢复 ${preview.count} 笔记录\n日期范围：${preview.count ? `${preview.start} 至 ${preview.end}` : "无记录（恢复后将清空账目）"}`;
+    $("#restore-consent").checked = false;
+    setError("#restore-error");
+    $("#backup-status").textContent = "校验通过，等待确认；当前账本尚未改变。";
+    $("#restore-dialog").showModal();
+    $("#restore-cancel").focus();
+  } catch (error) {
+    clearRestore();
+    $("#backup-status").textContent = "校验未通过，未提交恢复。";
+    setError("#backup-error", error.message);
+  } finally { restoreBusy(false); }
+});
+$("#restore-consent").addEventListener("change", () => restoreBusy(restoreState.busy));
+$("#restore-cancel").addEventListener("click", () => {
+  if (!restoreState.busy) $("#restore-dialog").close();
+});
+$("#restore-dialog").addEventListener("cancel", (event) => {
+  if (restoreState.busy) event.preventDefault();
+});
+$("#restore-dialog").addEventListener("close", () => {
+  clearRestore();
+  if ($("#backup-status").textContent.includes("等待确认")) $("#backup-status").textContent = "已取消恢复，账本未改变。";
+});
+$("#restore-confirm").addEventListener("click", async () => {
+  if (restoreState.busy || !restoreState.payload || !$("#restore-consent").checked) return;
+  restoreBusy(true);
+  $("#restore-confirm").textContent = "正在恢复…";
+  setError("#restore-error");
+  try {
+    await api("/api/restore", "POST", restoreState.payload);
+  } catch (error) {
+    setError("#restore-error", `恢复未确认成功：${error.message} 请先刷新核对账本再重试。`);
+    restoreBusy(false);
+    $("#restore-confirm").textContent = "确认替换并恢复";
+    return;
+  }
+  $("#backup-status").textContent = "恢复成功，正在刷新账目…";
+  $("#restore-dialog").close();
+  filterForm.reset();
+  $$("[data-period]").forEach((button) => {
+    const selected = button.dataset.period === "all";
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", selected);
+  });
+  try {
+    await refresh({}, true);
+    $("#backup-status").textContent = "恢复成功，账目、汇总和图表已刷新。";
+  } catch (error) {
+    showLoadError(error);
+    $("#backup-status").textContent = "恢复已成功，但页面刷新失败，请点击重试读取最新账本。";
+  } finally {
+    restoreBusy(false);
+    $("#restore-confirm").textContent = "确认替换并恢复";
+  }
+});

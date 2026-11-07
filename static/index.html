@@ -96,6 +96,13 @@
       </section>
       <section class="panel stats-panel" id="stats-panel" aria-labelledby="stats-title"><div class="panel-heading"><div><h2 id="stats-title">支出花在哪儿</h2><p>当前筛选内的支出构成</p></div><svg class="icon muted"><use href="#i-chart"/></svg></div><div id="donut" class="donut" role="img" aria-label="暂无支出数据"><div class="donut-hole"><span>总支出</span><strong id="chart-total">¥0.00</strong><small id="chart-category-count">0 个类别</small></div></div><div id="chart-legend" class="chart-legend"></div><p id="chart-empty" class="chart-empty">记录一笔支出，看看钱花在了哪里。</p><div class="stats-note"><svg class="icon"><use href="#i-shield"/></svg><span>账本保存于本机<br>日常记录，安心留存</span></div></section>
     </div>
+    <section class="panel backup-panel" aria-labelledby="backup-title">
+      <h2 id="backup-title">账本备份与恢复</h2>
+      <p>下载完整账目 JSON 备份，不受当前筛选影响。备份含个人收支信息，请妥善保管，勿向他人随意分享。</p>
+      <div class="backup-actions"><button id="backup-download" class="button secondary" type="button">下载 JSON 备份</button><button id="backup-select" class="button secondary" type="button">选择 JSON 文件恢复</button><input id="backup-file" type="file" accept=".json,application/json" hidden></div>
+      <p>恢复会替换当前全部账目，建议先下载当前备份。预算不包含在账目备份中。</p>
+      <p id="backup-status" role="status" aria-live="polite"></p><p id="backup-error" class="form-error" role="alert" hidden></p>
+    </section>
     <footer class="page-footer"><span>有数记账 <span class="footer-dot">·</span> 把日子过成喜欢的样子</span><span>金额单位：人民币（元）</span></footer>
   </main>
 
@@ -113,7 +120,15 @@
     </form>
   </dialog>
 
-  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">开始使用有数</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><ol class="help-list"><li><strong>记下收入和支出</strong><p>点击「记一笔」，填写金额、日期、类别和备注。金额填写正数，由收支类型决定用途。</p></li><li><strong>查看与筛选</strong><p>用日期、类别、金额或备注筛选账目。上方汇总和右侧图表只统计筛选后的记录。</p></li><li><strong>设置月度预算</strong><p>在「月度预算」卡片选择月份并设置金额，通过进度条查看已用和剩余额度。预算统计该月全部支出，不受筛选影响；超支时会以红色文字提示。</p></li><li><strong>保管好本地账本</strong><p>默认数据保存在项目的 data/ledger.json 文件中。关闭程序后仍然保留；备份时先停止程序，再复制该文件。</p></li></ol><div class="dialog-footer"><button type="button" class="button primary close-dialog">知道了</button></div></dialog>
+  <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">开始使用有数</h2><button type="button" class="icon-button close-dialog" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button></div><ol class="help-list"><li><strong>记下收入和支出</strong><p>点击「记一笔」，填写金额、日期、类别和备注。金额填写正数，由收支类型决定用途。</p></li><li><strong>查看与筛选</strong><p>用日期、类别、金额或备注筛选账目。上方汇总和右侧图表只统计筛选后的记录。</p></li><li><strong>设置月度预算</strong><p>在「月度预算」卡片选择月份并设置金额，通过进度条查看已用和剩余额度。预算统计该月全部支出，不受筛选影响；超支时会以红色文字提示。</p></li><li><strong>保管好本地账本</strong><p>默认数据保存在项目的 data/ledger.json 文件中。关闭程序后仍然保留；可在页面下方下载 JSON 备份；恢复前请核对记录数和日期范围，恢复将替换全部账目。请妥善保管备份。</p></li></ol><div class="dialog-footer"><button type="button" class="button primary close-dialog">知道了</button></div></dialog>
+  <dialog id="restore-dialog" aria-labelledby="restore-title" aria-describedby="restore-warning">
+    <div class="dialog-heading"><h2 id="restore-title">确认恢复账本</h2></div>
+    <p id="restore-preview"></p>
+    <p id="restore-warning" class="form-error">恢复会替换当前全部账目，不会与现有记录合并。请确认已妥善保存当前备份。</p>
+    <label class="restore-consent"><input type="checkbox" id="restore-consent">我已了解，确认替换当前全部账目</label>
+    <p id="restore-error" class="form-error" role="alert" hidden></p>
+    <div class="dialog-footer"><button type="button" id="restore-cancel" class="button secondary">取消</button><button type="button" id="restore-confirm" class="button danger" disabled>确认替换并恢复</button></div>
+  </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

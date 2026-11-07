@@ -1815,3 +1815,12 @@ label {
     transition:none!important
   }
 }
+
+.backup-panel { margin-top:24px; padding:24px; }
+.backup-panel p { color:var(--muted, #657368); line-height:1.7; }
+.backup-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.restore-consent { display:flex; align-items:flex-start; gap:10px; line-height:1.7; }
+.restore-consent input { width:20px; height:20px; flex-shrink:0; }
+#restore-preview { white-space:pre-line; overflow-wrap:anywhere; line-height:1.8; }
+#restore-dialog { max-height:90dvh; overflow-y:auto; }
+@media(max-width:600px) { .backup-panel { padding:18px; } .backup-actions { flex-direction:column; } .backup-actions .button { width:100%; } #restore-dialog .dialog-footer { flex-wrap:wrap; } #restore-dialog .dialog-footer .button { flex:1 1 100%; } }
