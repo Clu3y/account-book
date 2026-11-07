@@ -1,15 +1,19 @@
-"""记账、查询和统计。HTTP 界面之外也可以独立调用。"""
+"""记账、查询、预算和统计。HTTP 界面之外也可以独立调用。"""
 
 from collections import defaultdict
+from decimal import Decimal, ROUND_HALF_UP
 from threading import RLock
 
-from .models import CATEGORIES, Record, parse_amount, parse_date
+from .models import CATEGORIES, Record, parse_amount, parse_date, parse_month
+from .storage import StorageError
 
 
 class LedgerService:
-    def __init__(self, store):
+    def __init__(self, store, budget_store=None):
         self.store = store
+        self.budget_store = budget_store
         self.records = store.load()
+        self.budgets = budget_store.load() if budget_store else {}
         self.lock = RLock()
 
     def add(self, payload):
@@ -41,6 +45,64 @@ class LedgerService:
             if record.id == record_id:
                 return record
         raise KeyError("这笔记录已不存在，请刷新页面")
+
+    def set_budget(self, month, payload):
+        month = parse_month(month)
+        if not isinstance(payload, dict):
+            raise ValueError("预算内容必须是 JSON 对象")
+        amount_cents = parse_amount(payload.get("amount"))
+        if self.budget_store is None:
+            raise StorageError("预算存储未配置")
+        with self.lock:
+            updated = {**self.budgets, month: amount_cents}
+            self.budget_store.save(updated)
+            self.budgets = updated
+            return self._budget_status(month, self._month_expense_total(month))
+
+    def get_budget(self, month):
+        month = parse_month(month)
+        with self.lock:
+            return self._budget_status(month, self._month_expense_total(month))
+
+    def month_expense_total(self, month):
+        month = parse_month(month)
+        with self.lock:
+            return self._month_expense_total(month)
+
+    def _month_expense_total(self, month):
+        return sum(
+            record.amount_cents
+            for record in self.records
+            if record.kind == "expense" and record.date[:7] == month
+        )
+
+    def _budget_status(self, month, spent_cents):
+        budget_cents = self.budgets.get(month)
+        if budget_cents is None:
+            return {
+                "month": month,
+                "has_budget": False,
+                "budget_cents": None,
+                "spent_cents": spent_cents,
+                "remaining_cents": None,
+                "usage_percent": None,
+                "overspent_cents": 0,
+            }
+        remaining_cents = budget_cents - spent_cents
+        usage_percent = float(
+            (Decimal(spent_cents) * 100 / Decimal(budget_cents)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        )
+        return {
+            "month": month,
+            "has_budget": True,
+            "budget_cents": budget_cents,
+            "spent_cents": spent_cents,
+            "remaining_cents": remaining_cents,
+            "usage_percent": usage_percent,
+            "overspent_cents": max(0, spent_cents - budget_cents),
+        }
 
     def query(self, filters):
         start, end = filters.get("start", ""), filters.get("end", "")
