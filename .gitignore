@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/
+.qa/
+dist/*
+!dist/youshu-v1.0.0.zip
+*.log
+.DS_Store
+.idea/
+.vscode/
